@@ -2,10 +2,10 @@
 (ql:quickload "lispbuilder-sdl")
 
 
-(defparameter *window-width* 640)
-(defparameter *window-height* 480)
-(defparameter *brick-width* 16)
-(defparameter *brick-height* 16)
+(defparameter *window-width* 800)
+(defparameter *window-height* 600)
+(defparameter *brick-width* 24)
+(defparameter *brick-height* 24)
 (defparameter *field-width* 10)
 (defparameter *field-height* 20)
 (defparameter *kill-row* 2)
@@ -74,23 +74,33 @@
 
 
 (defclass piece-type ()
-  ((brick-type :initarg :brick-type
+  ((name :initarg :name
+         :reader piece-type-name)
+   (brick-type :initarg :brick-type
                :reader piece-type-brick-type)
    (forms :initarg :forms
           :reader piece-type-forms)))
 
 (defparameter *piece-types* (list))
+(defparameter *brick-types* (list))
 
 (defun define-piece-type (name brick-type &rest form-lists)
   (setf *piece-types* (acons name
-                             (make-instance 'piece-type :brick-type brick-type
+                             (make-instance 'piece-type
+                                            :name name
+                                            :brick-type brick-type
                                             :forms (make-array (length form-lists)
                                                                :initial-contents
                                                                (mapcar #'list->form form-lists)))
-                             *piece-types*)))
+                             *piece-types*))
+  (pushnew brick-type *brick-types*)
+  )
+
+(defun random-element (seq)
+  (elt seq (random (length seq))))
 
 (defun random-piece-type ()
-  (cdr (nth (random (length *piece-types*)) *piece-types*)))
+  (cdr (random-element *piece-types*)))
 
 (defmacro rgb (r g b)
   `(sdl:color :r ,r :g ,g :b ,b))
@@ -305,15 +315,19 @@
 
 (defun draw-brick (x y brick-type)
   (multiple-value-bind (screen-x screen-y) (transform-field-coords x y)
-    (sdl:draw-box-* screen-x screen-y *brick-width* *brick-height*
-                    :color brick-type :stroke-color (rgb 50 50 50))))
+    ;(sdl:draw-box-* screen-x screen-y *brick-width* *brick-height*
+    ;                :color brick-type :stroke-color (rgb 50 50 50))
+    (sdl:draw-surface-at-* (gethash brick-type (first (get-textures :brick)))
+                           screen-x screen-y)
+    ))
 
 
 (defun draw-field (x y field)
-  (sdl:draw-box-* x y (* *field-width* *brick-width*) (* *field-height* *brick-height*)
-                  :color (rgb 0 0 50))
-  (sdl:draw-box-* x y (* *field-width* *brick-width*) (* (1+ *kill-row*) *brick-height*)
-                  :color (rgb 50 0 0))
+  ;(sdl:draw-box-* x y (* *field-width* *brick-width*) (* *field-height* *brick-height*)
+  ;                :color (rgb 255 255 255))
+  ;(sdl:draw-box-* x y (* *field-width* *brick-width*) (* (1+ *kill-row*) *brick-height*)
+  ;                :color (rgb 255 200 200))
+  (sdl:draw-surface-at-* (first (get-textures :field)) *field-x* *field-y*)
   (loop for brick-x from 0 below *field-width*
         do (loop for brick-y from 0 below *field-height*
                  for brick = (field-brick-at field brick-x brick-y)
@@ -378,6 +392,7 @@
 (defparameter *key-map* '(
                           (:sdl-key-space . :drop)
                           (:sdl-key-up . :rotate-right)
+                          (:sdl-key-down . :fall)
                           (:sdl-key-right . :right)
                           (:sdl-key-left . :left)
                           ))
@@ -394,7 +409,8 @@
                          (:rotate-right (piece-rotate *piece* :right))
                          (:drop (loop for p = *piece* then (piece-fall p)
                                       until (landed-p *field* p)
-                                      finally (return p))))))
+                                      finally (return p)))
+                         (:fall (piece-fall *piece*)))))
     (unless (collision-p *field* altered-piece)
       (setf *piece* altered-piece))))
 
@@ -440,14 +456,61 @@
     rows))
 
 
+(defparameter *textures* (list))
+(defparameter *textures-colorize-color* (rgb 255 255 0))
+
+(defun get-textures (kind)
+  (getf *textures* kind))
+
+(defun colorize-pixel (pixel-color color)
+  (if (sdl:color= pixel-color *textures-colorize-color*)
+    color
+    pixel-color))
+
+(defun colorize-image (image colorize-color)
+  (let ((new-image (sdl:copy-surface :surface image :fill nil :color-key-fill nil)))
+    (dotimes (x (sdl:width image))
+      (dotimes (y (sdl:height image))
+        (sdl:draw-pixel-* x y :surface new-image
+                          :color (colorize-pixel (sdl:read-pixel-* x y :surface image)
+                                                 colorize-color))))
+    new-image))
+
+(defun load-texture (source)
+  (format t "Loading texture ~a...~%" source)
+  (sdl:convert-to-display-format
+    :surface (sdl:load-image source :color-key (rgb 255 255 255))))
+
+(defun load-and-colorize (source colors)
+  (let ((img (load-texture source)))
+    (format t "Colorizing texture ~a...~%" source)
+    (loop with textures = (make-hash-table)
+          for color in colors
+          do (setf (gethash color textures) (colorize-image img color))
+          finally (return textures))))
+
+(defun load-textures ()
+  (setf (getf *textures* :brick)
+        (loop for file in (directory (make-pathname :directory '(:relative "images/bricks")
+                                                    :name :wild
+                                                    :type "bmp"))
+              collect (load-and-colorize file *brick-types*)))
+  (setf (getf *textures* :field)
+        (loop for file in (directory (make-pathname :directory '(:relative "images/field")
+                                                    :name :wild
+                                                    :type "bmp"))
+              collect (load-texture file)))
+  )
+
+
 (define-condition game-over (condition) ())
 
 (defun sdl-main ()
-  (sdl:window *window-width* *window-height* :double-buffer t :hw t)
+  (sdl:window *window-width* *window-height* :double-buffer t)
   (sdl:enable-key-repeat nil nil)
   (setf (sdl:frame-rate) 10)
   (sdl:clear-display sdl:*black*)
-
+  (load-textures)
   (let ((*field* (make-field))
         (counter 0)
         (keys-pressed (list))
@@ -477,6 +540,7 @@
           )
 
         (sdl:clear-display sdl:*black*)
+
         (draw-field *field-x* *field-y* *field*)
         (when *piece*
           (draw-piece *piece*))
