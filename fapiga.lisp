@@ -302,6 +302,7 @@
                                              (length (piece-type-forms (piece-type piece))))))
 
 (defmacro field-top-brick (field)
+  (declare (ignore field))
   '*field-top-brick*)
 
 (defmacro field-row (field y)
@@ -642,7 +643,7 @@
         (let ((command (command-get keys-pressed)))
           (unless (state-over state)
             (handler-bind
-              ((game-over (lambda (c)
+              ((game-over (lambda (c) (declare (ignore c))
                             (format t "Game over!~%")))
                (points-earned (lambda (c)
                                 (format t "Points: ~d (+~d)~%" (total c) (points c))))
@@ -650,7 +651,7 @@
                ;             (print c)))
                )
 
-              (state-advance state (command-get keys-pressed)))))
+              (state-advance state command))))
         (setf keys-pressed (list))
 
         (sdl:clear-display (rgb 255 255 255))
@@ -678,5 +679,5 @@
 (defun main ()
   (sdl:with-init (sdl:sdl-init-video) (sdl-main)))
 
-(main)
+;(main)
 
