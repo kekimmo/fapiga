@@ -677,7 +677,10 @@
 
 
 (defun main ()
-  (sdl:with-init (sdl:sdl-init-video) (sdl-main)))
+  (sdl:with-init (sdl:sdl-init-video) (sdl-main))
+  #+clisp
+  (ext:exit)
+)
 
 ;(main)
 
