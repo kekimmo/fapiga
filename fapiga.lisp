@@ -364,7 +364,7 @@
       (format t "OK.~%"))))
 
 (defun load-textures-in (dir)
-  (loop for file in (directory (make-pathname :directory (list :relative dir)
+  (loop for file in (directory (make-pathname :directory dir
                                               :name :wild
                                               :type "bmp"))
         collect (load-texture file))
@@ -373,13 +373,13 @@
 (defun load-textures ()
   (format t "* Textures *~%")
   (setf (getf *textures* :brick)
-        (loop for file in (directory (make-pathname :directory '(:relative "images/bricks")
+        (loop for file in (directory (make-pathname :directory '(:relative "images" "bricks")
                                                     :name :wild
                                                     :type "bmp"))
               collect (load-and-colorize file *brick-types*)))
-  (setf (getf *textures* :field) (load-textures-in "images/field"))
-  (setf (getf *textures* :next) (load-textures-in "images/next"))
-  (setf (getf *textures* :game-over) (load-textures-in "images/game-over"))
+  (setf (getf *textures* :field) (load-textures-in '(:relative "images" "field")))
+  (setf (getf *textures* :next) (load-textures-in '(:relative "images" "next")))
+  (setf (getf *textures* :game-over) (load-textures-in '(:relative "images" "game-over")))
   (format t "* /Textures *~%")
   )
 
